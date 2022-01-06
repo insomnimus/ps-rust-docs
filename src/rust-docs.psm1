@@ -1,3 +1,21 @@
+function :open($file) {
+	if($env:BROWSER) {
+		&$env:BROWSER $file
+	} elseif($IsMacOS) {
+		/bin/open $file
+	} elseif($IsLinux) {
+		foreach($cmd in @("xdg-open", "sensible-browser", "x-www-browser", "gnome-open")) {
+			if(get-command -ea silentlyContinue $cmd) {
+				&$cmd $file
+				return
+			}
+		}
+		&$file
+	} else {
+		&$file
+	}
+}
+
 enum DocKind {
 	Module
 	Primitive
@@ -19,7 +37,7 @@ class ItemDoc {
 	[string]$Module
 
 	[void] Open() {
-		&$this.Path
+		&script::open $this.path
 	}
 
 	[string] ToString() {
@@ -73,7 +91,7 @@ class ModuleDoc {
 	}
 
 	[void]Open() {
-		&$this.IndexPath
+		script::open $this.IndexPath
 	}
 
 	[object[]] Find([string[]]$Components) {
