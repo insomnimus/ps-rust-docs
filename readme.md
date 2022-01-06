@@ -14,14 +14,14 @@ rdocs collections::HashMap
 Powershell 5.0 or above and `rustup` which you should already have.
 
 # Installation
-Just clone the repository under one of the paths in `$env:PSMODULEPATH`.
+Download and extract `rust-docs.zip` from [releases](https://github.com/insomnimus/ps-rust-docs/releases) into your PS module directory.
+
+Or if you want the development version, follow the steps below.
 
 ```powershell
 # Clone the repository.
 git clone https://github.com/insomnimus/ps-rust-docs
-$mod = get-item ./ps-rust-docs/src
-# Change into $profile
-# You don't have to put it there, see the text above.
+$module = get-item ./ps-rust-docs/src
 $modulesPath = join-path (split-path "$profile") "Modules"
 copy-item -recurse $module "$modulesPath/rust-docs"
 
