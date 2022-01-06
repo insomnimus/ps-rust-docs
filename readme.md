@@ -14,10 +14,23 @@ rdocs collections::HashMap
 Powershell 5.0 or above and `rustup` which you should already have.
 
 # Installation
+## Via Scoop (recommended)
+First add the bucket:
+
+`scoop bucket add insomnia https://github.com/insomnimus/scoop-bucket`
+
+Update scoop:
+
+`scoop update`
+
+Install the module:
+
+`scoop install rust-docs`
+
+## Download From Releases
 Download and extract `rust-docs.zip` from [releases](https://github.com/insomnimus/ps-rust-docs/releases) into your PS module directory.
 
-Or if you want the development version, follow the steps below.
-
+## Clone and Install Manually
 ```powershell
 # Clone the repository.
 git clone https://github.com/insomnimus/ps-rust-docs
