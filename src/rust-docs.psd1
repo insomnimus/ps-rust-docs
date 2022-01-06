@@ -1,5 +1,5 @@
 @{
-	RootModule = "ps-rust-docs.psm1"
+	RootModule = "rust-docs.psm1"
 	ModuleVersion = "0.1.0"
 	GUID = '1a947aec-7fb1-4b02-b358-35275ea0acf5'
 	Author = "Taylan Gökkaya <insomnimus.dev@gmail.com>"
@@ -11,7 +11,6 @@
 	CmdletsToExport = @()
 	VariablesToExport = @()
 	AliasesToExport = @("rdocs", "oprsd")
-	FileList = @("LICENSE", "ps-rust-docs.psm1", "ps-rust-docs.psd1")
 
 	PrivateData = @{
 		PSData = @{

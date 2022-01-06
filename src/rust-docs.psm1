@@ -156,7 +156,7 @@ function Open-RustDoc {
 	)
 
 	if($null -eq $script:STD) {
-		script:Load-RustDocs
+		script:Import-RustDoc
 	}
 	if(!$path -or $path -eq "std") {
 		rustup doc --std
@@ -188,7 +188,7 @@ Register-ArgumentCompleter -CommandName Open-RustDoc -ParameterName Path -Script
 		return "$buf`:"
 	}
 	if($null -eq $script:STD) {
-		script:Load-RustDocs
+		script:Import-RustDoc
 	}
 
 	$buf = if("$buf".startswith("std::")) {
