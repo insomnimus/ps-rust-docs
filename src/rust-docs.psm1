@@ -16,19 +16,21 @@ function :open($file) {
 	}
 }
 
-enum DocKind {
-	Module
-	Primitive
-	Enum
-	Struct
-	Trait
-	Fn
-	Type
-	Macro
-	Constant
-	Union
-	Keyword
+[Flags()] enum DocKind {
+	Module = 1
+	Primitive = 2
+	Enum = 4
+	Struct = 8
+	Trait = 16
+	Fn = 32
+	Type = 64
+	Macro = 128
+	Constant = 256
+	Union = 512
+	Keyword = 1024
 }
+
+[DocKind] $AnyDoc = [DocKind]::Module + [DocKind]::Primitive + [DocKind]::Enum + [DocKind]::Struct + [DocKind]::Trait + [DocKind]::Fn + [DocKind]::Type + [DocKind]::Macro + [DocKind]::Constant + [DocKind]::Union + [DocKind]::Keyword
 
 class ItemDoc {
 	[DocKind]$Kind
@@ -94,21 +96,26 @@ class ModuleDoc {
 		script::open $this.IndexPath
 	}
 
-	[object[]] Find([string[]]$Components) {
+	[object[]] Find([string[]]$Components, [DocKind]$kind) {
 		if($components.count -eq 0) {
 			return $null
 		}
 		if($components.count -eq 1) {
 			$query = $components[0]
 			$results = [System.Collections.ArrayList]::new()
-			foreach($entry in $this.children.GetEnumerator()) {
-				if($entry.name -clike $query) {
-					[void] $results.add($entry.value)
+			if(($kind -band [DocKind]::Module) -eq [DocKind]::Module) {
+				foreach($entry in $this.children.GetEnumerator()) {
+					if($entry.name -clike $query) {
+						[void] $results.add($entry.value)
+					}
 				}
 			}
-			foreach($item in $this.items) {
-				if($item.name -clike $query) {
-					[void] $results.add($item)
+
+			if($kind -ne [DocKind]::Module) {
+				foreach($item in $this.items) {
+					if(($kind -band $item.kind) -eq $item.kind -and $item.name -clike $query) {
+						[void] $results.add($item)
+					}
 				}
 			}
 			return $results
@@ -117,7 +124,7 @@ class ModuleDoc {
 		$results = [System.Collections.ArrayList]::new()
 		foreach($entry in $this.children.GetEnumerator()) {
 			if($entry.name -clike $components[0]) {
-				$res = $entry.value.Find($components[1..$components.length])
+				$res = $entry.value.Find($components[1..$components.length], $kind)
 				if($res) {
 					[void] $results.AddRange($res)
 				}
@@ -170,7 +177,7 @@ function Open-RustDoc {
 		[parameter(position = 0, HelpMessage = "Rust syntax import path of the item.")]
 		[string]$Path,
 		[parameter(position = 1, HelpMessage = "The kind of item, e.g. 'fn' or 'struct'.")]
-		[DocKind]$Kind
+		[DocKind]$Kind = $script:AnyDoc
 	)
 
 	if($null -eq $script:STD) {
@@ -186,10 +193,7 @@ function Open-RustDoc {
 		$path.split("::")
 	}
 
-	$item = $script:STD.Find($query) `
-	| where {
-		!$kind -or $_.kind -eq $kind
-	} `
+	$item = $script:STD.Find($query, $kind) `
 	| sort -property Kind `
 	| select -first 1
 
@@ -222,15 +226,20 @@ Register-ArgumentCompleter -CommandName Open-RustDoc -ParameterName Path -Script
 
 	$comps = $buf.split("::") | where-object { $_ -ne "" }
 
+	[DocKind] $kind = if($params["Kind"]) {
+		$params["Kind"] -bor [DocKind]::Module
+	} else {
+		$script:AnyDoc
+	}
+
 	if($comps.count -eq 1) {
-		$results = $script:STD.find("$comps*")
+		$results = $script:STD.find("$comps*", $kind)
 	} else {
 		$comps[-1] += "*"
-		$results = $script:STD.find($comps)
+		$results = $script:STD.find($comps, $kind)
 	}
 
 	$results `
-	| where-object { !$params.kind -or $params.kind -eq $_.kind } `
 	| sort-object -property Kind `
 	| foreach-object {
 		if($stdPrefix) {
