@@ -15,7 +15,7 @@ Powershell 5.0 or above and `rustup` which you should already have.
 
 # Installation
 ## Via Scoop (recommended)
-First add the bucket:
+First add [my bucket](https://github.com/insomnimus/scoop-bucket) to scoop:
 
 `scoop bucket add insomnia https://github.com/insomnimus/scoop-bucket`
 
