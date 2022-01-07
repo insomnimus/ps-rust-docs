@@ -1,6 +1,6 @@
 @{
 	RootModule = "rust-docs.psm1"
-	ModuleVersion = "0.1.3"
+	ModuleVersion = "0.1.4"
 	GUID = '1a947aec-7fb1-4b02-b358-35275ea0acf5'
 	Author = "Taylan Gökkaya <insomnimus.dev@gmail.com>"
 	Copyright = "Copyright (c) 2021 Taylan Gökkaya <insomnimus.dev@gmail.com>"

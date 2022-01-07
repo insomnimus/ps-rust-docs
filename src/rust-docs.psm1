@@ -80,7 +80,7 @@ class ModuleDoc {
 
 		$map = [ordered] @{}
 		foreach($dir in get-childitem -directory $path) {
-			if(-not (test-path -pathType leaf "$dir/index.html")) {
+			if((!$parent -and $dir.name.startswith("prim_")) -or -not (test-path -pathType leaf "$dir/index.html")) {
 				continue
 			}
 			$map[$dir.name] = [ModuleDoc]::new($dir, $this.ModulePath)
