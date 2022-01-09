@@ -25,7 +25,7 @@ Update scoop:
 
 Install the module:
 
-`scoop install rust-docs`
+`scoop install ps-rust-docs`
 
 ## Download From Releases
 Download and extract `rust-docs.zip` from [releases](https://github.com/insomnimus/ps-rust-docs/releases) into your PS module directory.
