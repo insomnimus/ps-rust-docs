@@ -217,6 +217,7 @@ Register-ArgumentCompleter -CommandName Open-RustDoc -ParameterName Path -Script
 		$stdPrefix = $true
 		"$buf".Substring("std::".length)
 	} else {
+		$stdPrefix = $false
 		"$buf"
 	}
 
@@ -224,24 +225,62 @@ Register-ArgumentCompleter -CommandName Open-RustDoc -ParameterName Path -Script
 		$buf = "$buf*"
 	}
 
-	$comps = $buf.split("::") | where-object { $_ -ne "" }
+	[string[]] $comps = $buf.split("::") | where-object { $_ -ne "" }
+	if($comps.Count -eq 1) {
+		$comps[-1] += "*"
+	}
 
-	[DocKind] $kind = if($params["Kind"]) {
-		$params["Kind"] -bor [DocKind]::Module
+	$kind = $params["Kind"]
+
+	# primitives and keywords are only top-level
+	if($kind -eq [DocKind]::Primitive -or $kind -eq [DocKind]::Keyword) {
+		if($comps.count -gt 1) {
+			return
+		}
+		$script:STD.find($comps, $kind) `
+		| sort-object -property Name `
+		| foreach-object {
+			if($stdPrefix) {
+				"std::" + $_.name
+			} else {
+				$_.name
+			}
+		}
+		return
+	}
+
+	[DocKind] $queryKind = if($kind) {
+		$kind -bor [DocKind]::Module
 	} else {
 		$script:AnyDoc
 	}
 
-	if($comps.count -eq 1) {
-		$results = $script:STD.find("$comps*", $kind)
-	} else {
-		$comps[-1] += "*"
-		$results = $script:STD.find($comps, $kind)
+	$results = $script:STD.find($comps, $queryKind)
+
+	if($null -eq $kind) {
+		$kind = [DocKind]::Module
 	}
 
-	$results `
-	| sort-object -property Kind `
-	| foreach-object {
+	[System.Collections.ArrayList]$sameKinds = @()
+	$others = [ordered] @{}
+	[System.Enum]::GetValues([DocKind]) | foreach-object {
+		$others[$_] = [System.Collections.ArrayList]::new()
+	}
+
+	foreach($doc in $results) {
+		if($doc.Kind -eq $kind) {
+			[void] $sameKinds.Add($doc)
+		} else {
+			[void] $others[$doc.Kind].Add($doc)
+		}
+	}
+
+	@(
+		$sameKinds | sort-object -property Name
+		foreach($doc in $others.values) {
+			$doc | sort-object -property name
+		}
+	) | foreach-object {
 		if($stdPrefix) {
 			"$_"
 		} else {
