@@ -1,3 +1,150 @@
+class ItemDoc {
+	[DocKind]$Kind
+	[string]$Name
+	[string]$Path
+	[string]$Parent
+
+	[void] Open() {
+		&script::open $this.path
+	}
+
+	[string] ToString() {
+		if($this.Parent) {
+			return "$($this.Parent)::$($this.name)"
+		} else {
+			return $this.name
+		}
+	}
+
+	hidden [bool] Matches([DocKind]$Kind) {
+		return (($kind -band $this.kind) -eq $this.kind)
+	}
+}
+
+class ModuleDoc {
+	[DocKind] $Kind = "Module"
+	[string] $Parent
+	[string] $Name
+	[string] $Path
+	[System.Collections.Specialized.OrderedDictionary] $Children = [ordered]@{}
+	[ItemDoc[]] $Items = @()
+
+	ModuleDoc([System.IO.DirectoryInfo]$File, [string]$parent) {
+		$this.Path = join-path $File.fullname "index.html"
+		$this.Name = $file.name
+		$this.Parent = $parent
+		$modulePath = if($parent) {
+			"${parent}::$($this.name)"
+		} else {
+			$this.name
+		}
+
+		$this.items = get-childitem -file "$file/*.*.html" | foreach-object {
+			try {
+				$split = $_.basename.split(".", 2)
+				[ItemDoc] @{
+					Kind = $split[0]
+					Name = $split[1]
+					Parent = $modulePath
+					path = $_.fullname
+				}
+			} catch {}
+		}
+
+		$map = [ordered] @{}
+		foreach($dir in get-childitem -directory $file) {
+			if((!$parent -and $dir.name.startswith("prim_")) -or -not (test-path -pathType leaf "$dir/index.html")) {
+				continue
+			}
+			$map[$dir.name] = [ModuleDoc]::new($dir, $ModulePath)
+		}
+		$this.Children = $map
+	}
+
+	[string] ToString() {
+		if($this.parent) {
+			return "$($this.parent)::$($this.name)"
+		} else {
+			return $this.name
+		}
+	}
+
+	hidden [bool] Matches([DocKind]$kind) {
+		return (($kind -band [DocKind]::Module) -eq [DocKind]::Module)
+	}
+
+	[void]Open() {
+		&script::open $this.Path
+	}
+
+	[object[]] Find([string[]]$Components, [DocKind]$kind) {
+		if($components.count -eq 0) {
+			return $null
+		}
+
+		if($components[0] -ceq "**") {
+			if($components.count -eq 1) {
+				return ($this.GetAllItems() | where-object { $_ -and $_.matches($kind) })
+			}
+			# find all submodules and continue the query afterwards
+			$rest = $components[1..($components.count)]
+			$results = $this.GetAllSubmodules() `
+			| foreach-object { $_.Find($rest, $kind) } `
+			| group-object -property Path `
+			| foreach-object { $_.group[0] }
+			return $results
+		}
+
+		if($components.count -eq 1) {
+			$query = $components[0]
+			$results = [System.Collections.ArrayList]::new()
+			if(($kind -band [DocKind]::Module) -eq [DocKind]::Module) {
+				foreach($entry in $this.children.GetEnumerator()) {
+					if($entry.name -clike $query) {
+						[void] $results.add($entry.value)
+					}
+				}
+			}
+
+			if($kind -ne [DocKind]::Module) {
+				foreach($item in $this.items) {
+					if($item.matches($kind) -and $item.name -clike $query) {
+						[void] $results.add($item)
+					}
+				}
+			}
+			return $results
+		}
+
+		$results = [System.Collections.ArrayList]::new()
+		[string[]] $rest = $components[1..($components.count)]
+		foreach($entry in $this.children.GetEnumerator()) {
+			if($entry.name -clike $components[0]) {
+				$res = $entry.value.Find($rest, $kind)
+				if($res) {
+					[void] $results.AddRange($res)
+				}
+			}
+		}
+		return $results
+	}
+
+	hidden [ModuleDoc[]] GetAllSubmodules() {
+		return @(
+			$this
+			$this.children.values | foreach-object { $_.GetAllSubmodules() }
+		)
+	}
+
+	hidden [object[]] GetAllItems() {
+		return @(
+			$this
+			$this.items | foreach-object { $_ }
+			$this.children.values | foreach-object { $_.GetAllItems() }
+		)
+	}
+}
+
 function :open($file) {
 	if($env:BROWSER) {
 		&$env:BROWSER $file
@@ -31,108 +178,6 @@ function :open($file) {
 }
 
 [DocKind] $AnyDoc = [DocKind]::Module + [DocKind]::Primitive + [DocKind]::Enum + [DocKind]::Struct + [DocKind]::Trait + [DocKind]::Fn + [DocKind]::Type + [DocKind]::Macro + [DocKind]::Constant + [DocKind]::Union + [DocKind]::Keyword
-
-class ItemDoc {
-	[DocKind]$Kind
-	[string]$Name
-	[string]$Path
-	[string]$Module
-
-	[void] Open() {
-		&script::open $this.path
-	}
-
-	[string] ToString() {
-		if($this.Module) {
-			return "$($this.module)::$($this.name)"
-		} else {
-			return $this.name
-		}
-	}
-}
-
-class ModuleDoc {
-	[DocKind] $Kind = "Module"
-	[string] $ModulePath
-	[string] $IndexPath
-	[System.Collections.Specialized.OrderedDictionary] $Children
-	[ItemDoc[]] $Items
-
-	ModuleDoc([System.IO.DirectoryInfo]$path, [string]$parent) {
-		$this.IndexPath = join-path $path.fullname "index.html"
-		if($parent) {
-			$this.ModulePath = "${parent}::$($path.name)"
-		} else {
-			$this.ModulePath = $path.name
-		}
-
-		$this.items = get-childitem -file "$path/*.*.html" | % {
-			try {
-				$split = $_.basename.split(".", 2)
-				[ItemDoc] @{
-					Kind = $split[0]
-					Name = $split[1]
-					Module = $this.ModulePath
-					path = $_.fullname
-				}
-			} catch {}
-		}
-
-		$map = [ordered] @{}
-		foreach($dir in get-childitem -directory $path) {
-			if((!$parent -and $dir.name.startswith("prim_")) -or -not (test-path -pathType leaf "$dir/index.html")) {
-				continue
-			}
-			$map[$dir.name] = [ModuleDoc]::new($dir, $this.ModulePath)
-		}
-		$this.Children = $map
-	}
-
-	[string] ToString() {
-		return $this.ModulePath
-	}
-
-	[void]Open() {
-		script::open $this.IndexPath
-	}
-
-	[object[]] Find([string[]]$Components, [DocKind]$kind) {
-		if($components.count -eq 0) {
-			return $null
-		}
-		if($components.count -eq 1) {
-			$query = $components[0]
-			$results = [System.Collections.ArrayList]::new()
-			if(($kind -band [DocKind]::Module) -eq [DocKind]::Module) {
-				foreach($entry in $this.children.GetEnumerator()) {
-					if($entry.name -clike $query) {
-						[void] $results.add($entry.value)
-					}
-				}
-			}
-
-			if($kind -ne [DocKind]::Module) {
-				foreach($item in $this.items) {
-					if(($kind -band $item.kind) -eq $item.kind -and $item.name -clike $query) {
-						[void] $results.add($item)
-					}
-				}
-			}
-			return $results
-		}
-
-		$results = [System.Collections.ArrayList]::new()
-		foreach($entry in $this.children.GetEnumerator()) {
-			if($entry.name -clike $components[0]) {
-				$res = $entry.value.Find($components[1..$components.length], $kind)
-				if($res) {
-					[void] $results.AddRange($res)
-				}
-			}
-		}
-		return $results
-	}
-}
 
 [ModuleDoc]$STD = $null
 
@@ -205,7 +250,7 @@ function Open-RustDoc {
 }
 
 Register-ArgumentCompleter -CommandName Open-RustDoc -ParameterName Path -ScriptBlock {
-	param($_a, $_b, $buf, $_d, $params)
+	param($_a, $_b, $buf = "", $_d, $params)
 	if($buf.endswith(":") -and !$buf.endswith("::")) {
 		return "$buf`:"
 	}
@@ -226,8 +271,8 @@ Register-ArgumentCompleter -CommandName Open-RustDoc -ParameterName Path -Script
 	}
 
 	[string[]] $comps = $buf.split("::") | where-object { $_ -ne "" }
-	if($comps.Count -eq 1) {
-		$comps[-1] += "*"
+	if($comps.Count -eq 1 -and -not $comps[0].endsWith("*")) {
+		$comps[0] += "*"
 	}
 
 	$kind = $params["Kind"]
@@ -280,7 +325,8 @@ Register-ArgumentCompleter -CommandName Open-RustDoc -ParameterName Path -Script
 		foreach($doc in $others.values) {
 			$doc | sort-object -property name
 		}
-	) | foreach-object {
+	) | where-object { $_.parent } `
+	| foreach-object {
 		if($stdPrefix) {
 			"$_"
 		} else {

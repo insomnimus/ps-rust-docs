@@ -8,7 +8,23 @@ Open-RustDoc sync::mpsc::channel
 rdocs collections::HashMap
 ```
 
-> Note: you can press tab to complete the import path! It's fully supported.
+## Tab Completion
+Most of the effort in writing the module went to providing excellent tab completions, as a result even double-star glob patterns will complete efficiently and exactly.
+
+You can press tab to complete a partial path:
+
+`os::wi<tab>` will complete to `os::windows`.
+
+You can provide the type beforehand, so that you don't get completions for structs when you're looking for an enum etc:
+
+`rdocs -kind enum io::<tab>`
+
+You can use wildcards to match an arbitrary item:
+
+-	`*` matches any number of any character except a path separator (`::`).
+-	`**` matches any number of characters, including path separators. For example, `**::*Ext` will match `os::linux::process::ChildExt`.
+
+Rest of the patterns are the same as Powershell's.
 
 # Dependencies
 Powershell 5.0 or above and `rustup` which you should already have.
