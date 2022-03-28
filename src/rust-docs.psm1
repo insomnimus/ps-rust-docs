@@ -233,7 +233,19 @@ function Open-RustDoc {
 	[CmdletBinding()]
 	param(
 		[parameter(position = 0, HelpMessage = "Rust syntax import path of the item.")]
-		[ValidateScript({ !$_ -or (!$_.endswith(":") -and $_ -match '^[a-zA-Z0-9_]+(\:\:[a-zA-Z0-9_]+)*(\:\:|\!)?$') })]
+		[ValidateScript({
+				if(!$_) { return $true }
+				[string[]] $split = $_.split("::")
+				foreach($s in $split) {
+					if(!$s) {
+						return $false
+					}
+					if($s.contains("**") -and $s -cne "**") {
+						return $false
+					}
+					$true
+				}
+			})]
 		[string]$Path,
 		[parameter(position = 1, HelpMessage = "The kind of item, e.g. 'fn' or 'struct'.")]
 		[DocKind]$Kind = $script:AnyDoc
@@ -277,7 +289,19 @@ function Get-RustDoc {
 	[OutputType([Doc])]
 	param(
 		[parameter(position = 0, HelpMessage = "Rust syntax import path of the item.")]
-		[ValidateScript({ !$_ -or (!$_.endswith(":") -and $_ -match '^[a-zA-Z0-9_]+(\:\:[a-zA-Z0-9_]+)*(\:\:|\!)?$') })]
+		[ValidateScript({
+				if(!$_) { return $true }
+				[string[]] $split = $_.split("::")
+				foreach($s in $split) {
+					if(!$s) {
+						return $false
+					}
+					if($s.contains("**") -and $s -cne "**") {
+						return $false
+					}
+					$true
+				}
+			})]
 		[string]$Path,
 		[parameter(position = 1, HelpMessage = "The kind of item, e.g. 'fn' or 'struct'.")]
 		[DocKind]$Kind = $script:AnyDoc
