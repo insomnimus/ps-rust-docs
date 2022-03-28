@@ -2,11 +2,17 @@ class Doc {
 	[DocKind] $Kind
 	[string] $Name
 	[string] $File
-	[string] $Parent
 	[string] $Import
 
 	[string] ToString() {
 		return $this.Import
+	}
+
+	[string] Parent() {
+		if(!$this.Import -or !$this.Import.Contains("::")) {
+			return $null
+		}
+		return $this.Import -replace '\:\:[^\:]+$', ""
 	}
 
 	[void] Open() {
@@ -22,7 +28,6 @@ class ItemDoc: Doc {
 	[ItemDoc] Clone() {
 		return ([ItemDoc] @{
 				Name = $this.Name
-				Parent = $this.Parent
 				File = $this.File
 				Kind = $this.Kind
 				Import = $this.Import
@@ -43,7 +48,6 @@ class ModuleDoc: Doc {
 		if($other.items) {
 			$this.Items = $other.Items | foreach-object { if($_) { $_.clone() } }
 		}
-		$this.Parent = $other.Parent
 		$this.File = $other.File
 		$this.Import = $other.Import
 	}
@@ -53,9 +57,7 @@ class ModuleDoc: Doc {
 	static [ModuleDoc] FromDir([System.IO.DirectoryInfo]$File, [string]$parent) {
 		$self = [ModuleDoc]::new()
 		$self.File = join-path $File.fullname "index.html"
-		# $this.Kind = [DocKind]::Module
 		$self.Name = $file.name
-		$self.Parent = $parent
 		$self.Import = if($parent) {
 			"${parent}::$($file.name)"
 		} else {
@@ -68,9 +70,8 @@ class ModuleDoc: Doc {
 				[ItemDoc] @{
 					Kind = $split[0]
 					Name = $split[1]
-					Parent = $self.Import
 					File = $_.fullname
-					Import = "$($self.Import)::$($split[0])"
+					Import = "$($self.Import)::$($split[1])"
 				}
 			} catch {}
 		}
@@ -381,7 +382,7 @@ Register-ArgumentCompleter -CommandName Open-RustDoc, Get-RustDoc -ParameterName
 		foreach($doc in $others.values) {
 			$doc | sort-object -property Import
 		}
-	) | where-object { $_.parent } `
+	) | where-object { $_.Import -and $_.Import.Contains("::") } `
 	| foreach-object {
 		if($stdPrefix) {
 			"$_"
