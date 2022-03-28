@@ -1,83 +1,91 @@
-class ItemDoc {
-	[DocKind]$Kind
-	[string]$Name
-	[string]$Path
-	[string]$Parent
-
-	[void] Open() {
-		&script::open $this.path
-	}
+class Doc {
+	[DocKind] $Kind
+	[string] $Name
+	[string] $File
+	[string] $Parent
+	[string] $Import
 
 	[string] ToString() {
-		if($this.Parent) {
-			return "$($this.Parent)::$($this.name)"
-		} else {
-			return $this.name
-		}
+		return $this.Import
 	}
 
-	hidden [bool] Matches([DocKind]$Kind) {
+	[void] Open() {
+		script::open $this.File
+	}
+
+	[bool] Matches([DocKind]$Kind) {
 		return (($kind -band $this.kind) -eq $this.kind)
 	}
 }
 
-class ModuleDoc {
-	[DocKind] $Kind = "Module"
-	[string] $Parent
-	[string] $Name
-	[string] $Path
-	[System.Collections.Specialized.OrderedDictionary] $Children = [ordered]@{}
+class ItemDoc: Doc {
+	[ItemDoc] Clone() {
+		return ([ItemDoc] @{
+				Name = $this.Name
+				Parent = $this.Parent
+				File = $this.File
+				Kind = $this.Kind
+				Import = $this.Import
+			})
+	}
+}
+
+class ModuleDoc: Doc {
+	[DocKind] $Kind = [DocKind]::Module
+	[ModuleDoc []] $Children = @()
 	[ItemDoc[]] $Items = @()
 
-	ModuleDoc([System.IO.DirectoryInfo]$File, [string]$parent) {
-		$this.Path = join-path $File.fullname "index.html"
-		$this.Name = $file.name
-		$this.Parent = $parent
-		$modulePath = if($parent) {
-			"${parent}::$($this.name)"
+	hidden ModuleDoc([ModuleDoc]$other) {
+		$this.Name = $other.Name
+		if($other.children) {
+			$this.Children = $other.Children | foreach-object { if($_) { $_.clone() } }
+		}
+		if($other.items) {
+			$this.Items = $other.Items | foreach-object { if($_) { $_.clone() } }
+		}
+		$this.Parent = $other.Parent
+		$this.File = $other.File
+		$this.Import = $other.Import
+	}
+
+	hidden ModuleDoc() {}
+
+	static [ModuleDoc] FromDir([System.IO.DirectoryInfo]$File, [string]$parent) {
+		$self = [ModuleDoc]::new()
+		$self.File = join-path $File.fullname "index.html"
+		# $this.Kind = [DocKind]::Module
+		$self.Name = $file.name
+		$self.Parent = $parent
+		$self.Import = if($parent) {
+			"${parent}::$($file.name)"
 		} else {
-			$this.name
+			$file.name
 		}
 
-		$this.items = get-childitem -file "$file/*.*.html" | foreach-object {
+		$self.items = get-childitem -file "$file/*.*.html" | foreach-object {
 			try {
 				$split = $_.basename.split(".", 2)
 				[ItemDoc] @{
 					Kind = $split[0]
 					Name = $split[1]
-					Parent = $modulePath
-					path = $_.fullname
+					Parent = $self.Import
+					File = $_.fullname
+					Import = "$($self.Import)::$($split[0])"
 				}
 			} catch {}
 		}
 
-		$map = [ordered] @{}
-		foreach($dir in get-childitem -directory $file) {
-			if((!$parent -and $dir.name.startswith("prim_")) -or -not (test-path -pathType leaf "$dir/index.html")) {
-				continue
-			}
-			$map[$dir.name] = [ModuleDoc]::new($dir, $ModulePath)
+		[ModuleDoc[]] $subs = get-childitem -directory $file `
+		| where-object { -not (!$parent -and $_.name.startswith("prim_")) -and (test-path -pathType leaf "$_/index.html") } `
+		| foreach-object { [ModuleDoc]::FromDir($_, $self.Import) }
+
+		if($subs) {
+			$self.Children = $subs
 		}
-		$this.Children = $map
+		return $self
 	}
 
-	[string] ToString() {
-		if($this.parent) {
-			return "$($this.parent)::$($this.name)"
-		} else {
-			return $this.name
-		}
-	}
-
-	hidden [bool] Matches([DocKind]$kind) {
-		return (($kind -band [DocKind]::Module) -eq [DocKind]::Module)
-	}
-
-	[void]Open() {
-		&script::open $this.Path
-	}
-
-	[object[]] Find([string[]]$Components, [DocKind]$kind) {
+	[Doc[]] Find([string[]]$Components, [DocKind]$kind) {
 		if($components.count -eq 0) {
 			return $null
 		}
@@ -90,7 +98,7 @@ class ModuleDoc {
 			$rest = $components[1..($components.count)]
 			$results = $this.GetAllSubmodules() `
 			| foreach-object { $_.Find($rest, $kind) } `
-			| group-object -property Path `
+			| group-object -property File `
 			| foreach-object { $_.group[0] }
 			return $results
 		}
@@ -99,9 +107,9 @@ class ModuleDoc {
 			$query = $components[0]
 			$results = [System.Collections.ArrayList]::new()
 			if(($kind -band [DocKind]::Module) -eq [DocKind]::Module) {
-				foreach($entry in $this.children.GetEnumerator()) {
-					if($entry.name -clike $query) {
-						[void] $results.add($entry.value)
+				foreach($mod in $this.children) {
+					if($mod.Name -clike $query) {
+						[void] $results.add($mod)
 					}
 				}
 			}
@@ -118,9 +126,9 @@ class ModuleDoc {
 
 		$results = [System.Collections.ArrayList]::new()
 		[string[]] $rest = $components[1..($components.count)]
-		foreach($entry in $this.children.GetEnumerator()) {
-			if($entry.name -clike $components[0]) {
-				$res = $entry.value.Find($rest, $kind)
+		foreach($mod in $this.children) {
+			if($mod.Name -clike $components[0]) {
+				$res = $mod.Find($rest, $kind)
 				if($res) {
 					[void] $results.AddRange($res)
 				}
@@ -132,16 +140,20 @@ class ModuleDoc {
 	hidden [ModuleDoc[]] GetAllSubmodules() {
 		return @(
 			$this
-			$this.children.values | foreach-object { $_.GetAllSubmodules() }
+			$this.children | foreach-object { $_.GetAllSubmodules() }
 		)
 	}
 
-	hidden [object[]] GetAllItems() {
+	hidden [Doc[]] GetAllItems() {
 		return @(
 			$this
 			$this.items | foreach-object { $_ }
-			$this.children.values | foreach-object { $_.GetAllItems() }
+			$this.children | foreach-object { $_.GetAllItems() }
 		)
+	}
+
+	[ModuleDoc] Clone() {
+		return [ModuleDoc]::new($this)
 	}
 }
 
@@ -204,7 +216,7 @@ function Import-RustDoc {
 		$DocsStdPath = split-path -parent "$DocsStdPath"
 	}
 
-	$script:STD = [ModuleDoc]::new($docsStdPath, "")
+	$script:STD = [ModuleDoc]::FromDir($docsStdPath, "")
 }
 
 <#
@@ -220,6 +232,7 @@ function Open-RustDoc {
 	[CmdletBinding()]
 	param(
 		[parameter(position = 0, HelpMessage = "Rust syntax import path of the item.")]
+		[ValidateScript({ !$_ -or (!$_.endswith(":") -and $_ -match '^[a-zA-Z0-9_]+(\:\:[a-zA-Z0-9_]+)*(\:\:)?$') })]
 		[string]$Path,
 		[parameter(position = 1, HelpMessage = "The kind of item, e.g. 'fn' or 'struct'.")]
 		[DocKind]$Kind = $script:AnyDoc
@@ -249,7 +262,50 @@ function Open-RustDoc {
 	}
 }
 
-Register-ArgumentCompleter -CommandName Open-RustDoc -ParameterName Path -ScriptBlock {
+<#
+.SYNOPSIS
+Gets Doc objects by their import (accepts wildcards).
+.DESCRIPTION
+Gets Doc objects by their import (accepts wildcards).
+The syntax is 'module_name::submodule_name::item_name'.
+.EXAMPLE
+Get-RustDoc sync::mpsc::channel
+#>
+function Get-RustDoc {
+	[CmdletBinding()]
+	[OutputType([Doc])]
+	param(
+		[parameter(position = 0, HelpMessage = "Rust syntax import path of the item.")]
+		[ValidateScript({ !$_ -or (!$_.endswith(":") -and $_ -match '^[a-zA-Z0-9_]+(\:\:[a-zA-Z0-9_]+)*(\:\:)?$') })]
+		[string]$Path,
+		[parameter(position = 1, HelpMessage = "The kind of item, e.g. 'fn' or 'struct'.")]
+		[DocKind]$Kind = $script:AnyDoc
+	)
+
+	if($null -eq $script:STD) {
+		script:Import-RustDoc
+	}
+	if(!$path -or $path -eq "std") {
+		return $script:STD.clone()
+	}
+
+	$query = if($path.startswith("std::")) {
+		$path.Substring("std::".length).split("::")
+	} else {
+		$path.split("::")
+	}
+	$query = $query | where-object { $_ }
+
+	if($query.count -eq 0) {
+		return $script:STD.clone()
+	}
+
+	$script:STD.Find($query, $kind) `
+	| sort-object -property Kind `
+	| foreach-object { $_.clone() }
+}
+
+Register-ArgumentCompleter -CommandName Open-RustDoc, Get-RustDoc -ParameterName Path -ScriptBlock {
 	param($_a, $_b, $buf = "", $_d, $params)
 	if($buf.endswith(":") -and !$buf.endswith("::")) {
 		return "$buf`:"
@@ -271,8 +327,8 @@ Register-ArgumentCompleter -CommandName Open-RustDoc -ParameterName Path -Script
 	}
 
 	[string[]] $comps = $buf.split("::") | where-object { $_ -ne "" }
-	if($comps.Count -eq 1 -and -not $comps[0].endsWith("*")) {
-		$comps[0] += "*"
+	if($comps.Count -ge 1 -and -not $comps[-1].endsWith("*")) {
+		$comps[-1] += "*"
 	}
 
 	$kind = $params["Kind"]
@@ -321,9 +377,9 @@ Register-ArgumentCompleter -CommandName Open-RustDoc -ParameterName Path -Script
 	}
 
 	@(
-		$sameKinds | sort-object -property Name
+		$sameKinds | sort-object -property Import
 		foreach($doc in $others.values) {
-			$doc | sort-object -property name
+			$doc | sort-object -property Import
 		}
 	) | where-object { $_.parent } `
 	| foreach-object {
@@ -337,3 +393,4 @@ Register-ArgumentCompleter -CommandName Open-RustDoc -ParameterName Path -Script
 
 Set-Alias rdocs Open-RustDoc
 Set-Alias oprsd Open-RustDoc
+Set-Alias grsd Get-RustDoc
