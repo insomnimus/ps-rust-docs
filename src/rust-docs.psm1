@@ -304,14 +304,25 @@ function Get-RustDoc {
 			})]
 		[string]$Path,
 		[parameter(position = 1, HelpMessage = "The kind of item, e.g. 'fn' or 'struct'.")]
-		[DocKind]$Kind = $script:AnyDoc
+		[DocKind]$Kind = $script:AnyDoc,
+		[Parameter(HelpMessage = "Recurse into submodules.")]
+		[switch] $Recurse
 	)
 
 	if($null -eq $script:STD) {
 		script:Import-RustDoc
 	}
+
 	if(!$path -or $path -eq "std") {
-		return $script:STD.clone()
+		$results = if($recurse) {
+			$script:STD.Find("**", $kind)
+		} elseif($kind -eq $script:AnyDoc) {
+			return $script:STD.clone()
+		} else {
+			$script:STD.Find("*", $kind)
+		}
+		$results | foreach-object { $_.clone() }
+		return
 	}
 
 	$query = if($path.startswith("std::")) {
@@ -320,9 +331,13 @@ function Get-RustDoc {
 		$path.split("::")
 	}
 	$query = $query | where-object { $_ }
+	if($recurse -and $query[-1] -cne "**") {
+		$query = @($query, "**")
+	}
 
 	if($query.count -eq 0) {
-		return $script:STD.clone()
+		$script:STD.Find("*", $kind) | foreach-object { $_.clone() }
+		return
 	}
 
 	$script:STD.Find($query, $kind) `
