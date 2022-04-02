@@ -1,6 +1,6 @@
 @{
 	RootModule = "rust-docs.psm1"
-	ModuleVersion = "0.5.0"
+	ModuleVersion = "0.5.1"
 	GUID = '1a947aec-7fb1-4b02-b358-35275ea0acf5'
 	Author = "Taylan Gökkaya <insomnimus.dev@gmail.com>"
 	Copyright = "Copyright (c) 2022 Taylan Gökkaya <insomnimus.dev@gmail.com>"
@@ -10,7 +10,7 @@
 	FunctionsToExport = @("Open-RustDoc", "Import-RustDoc", "Get-RustDoc")
 	CmdletsToExport = @()
 	VariablesToExport = @()
-	AliasesToExport = "*"
+	AliasesToExport = @("rdocs", "oprsd", "grsd")
 
 	PrivateData = @{
 		PSData = @{
